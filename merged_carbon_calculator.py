@@ -1,7 +1,7 @@
 """
 Carbon Footprint Calculator - Merged Version
 Combines all features from various versions into one comprehensive calculator
-streamlit run merged_carbon_calculator.py
+
 
 """
 
@@ -11,11 +11,19 @@ import plotly.express as px
 import base64
 from datetime import datetime
 
-# Initialize session state with improved DataFrame structure
+# Initialize session state for data storage
 if 'footprint_data' not in st.session_state:
     st.session_state.footprint_data = pd.DataFrame(columns=[
-        'Type', 'Value', 'Timestamp', 'Cateory'
+        'Type', 'Value', 'Timestamp', 'Category'
     ])
+
+def save_data(data):
+    """Save footprint data to session state"""
+    new_row = pd.DataFrame([data])
+    st.session_state.footprint_data = pd.concat(
+        [st.session_state.footprint_data, new_row],
+        ignore_index=True
+    )
 
 # Background image setup from main.py
 def get_base64(bin_file):
@@ -63,7 +71,7 @@ def show_visualizations():
     try:
         st.subheader("📊 Your Footprint History")
         
-        # Time series chart with error handling
+        # Time series line chart with markers
         if not st.session_state.footprint_data.empty:
             fig = px.line(
                 st.session_state.footprint_data,
@@ -71,25 +79,27 @@ def show_visualizations():
                 y='Value',
                 color='Category',
                 title='Carbon Footprint Over Time',
-                markers=True
+                markers=True,
+                line_shape='spline'
             )
+            fig.update_traces(line=dict(width=3))
             st.plotly_chart(fig, use_container_width=True)
         
-        # Latest comparison with error handling
-        st.subheader("🔍 Latest Comparison")
+        # Latest comparison as pie chart
+        st.subheader("🔍 Footprint Composition")
         if not st.session_state.footprint_data.empty:
             latest = st.session_state.footprint_data.dropna().groupby('Category').last().reset_index()
             if not latest.empty:
-                fig = px.bar(
+                fig = px.pie(
                     latest,
-                    x='Category',
-                    y='Value',
-                    color='Category',
-                    title='Latest Footprint by Category'
+                    names='Category',
+                    values='Value',
+                    title='Latest Footprint Composition',
+                    hole=0.3
                 )
                 st.plotly_chart(fig, use_container_width=True)
             else:
-                st.warning("No complete data available for comparison")
+                st.warning("No complete data available for visualization")
     except Exception as e:
         st.error(f"Error displaying visualizations: {str(e)}")
 
@@ -117,16 +127,13 @@ def household_calculator():
             show_impact(total, "Household")
             
             # Store results
-            new_data = pd.DataFrame([{
+            new_data = {
                 'Type': 'Household',
                 'Value': round(total, 2),
                 'Timestamp': datetime.now(),
                 'Category': 'Household'
-            }])
-            st.session_state.footprint_data = pd.concat([
-                st.session_state.footprint_data,
-                new_data
-            ], ignore_index=True)
+            }
+            save_data(new_data)
             
             show_visualizations()
 
@@ -152,16 +159,13 @@ def transport_calculator():
             show_impact(total, "Transport")
             
             # Store results
-            new_data = pd.DataFrame([{
+            new_data = {
                 'Type': 'Transport',
                 'Value': round(total, 2),
                 'Timestamp': datetime.now(),
                 'Category': 'Transport'
-            }])
-            st.session_state.footprint_data = pd.concat([
-                st.session_state.footprint_data,
-                new_data
-            ], ignore_index=True)
+            }
+            save_data(new_data)
             
             show_visualizations()
 
@@ -190,9 +194,75 @@ def main():
     with tab2:
         transport_calculator()
     with tab3:
-        st.write("Car calculator implementation would go here")
+        with st.expander("🚗 Car Emissions", expanded=True):
+            cols = st.columns(2)
+            with cols[0]:
+                distance = st.number_input("Distance driven (km)", 0.0, 100000.0, 0.0)
+                fuel_type = st.selectbox("Fuel type", ["Petrol", "Diesel", "Hybrid", "Electric"])
+            with cols[1]:
+                fuel_efficiency = st.number_input("Fuel efficiency (L/100km)", 0.0, 20.0, 8.0)
+                
+            if st.button("Calculate Car Footprint"):
+                # Emission factors (kg CO2 per liter or per km for electric)
+                factors = {
+                    "Petrol": 2.31,
+                    "Diesel": 2.68, 
+                    "Hybrid": 1.50,
+                    "Electric": 0.05  # kg CO2 per km (depends on electricity source)
+                }
+                
+                if fuel_type == "Electric":
+                    total = distance * factors[fuel_type] / 1000  # Convert to metric tons
+                else:
+                    total = (distance * (fuel_efficiency/100) * factors[fuel_type]) / 1000
+                
+                st.metric("Total Footprint", f"{round(total, 2)} metric tons CO₂")
+                show_impact(total, "Car")
+                
+                new_data = {
+                    'Type': 'Car',
+                    'Value': round(total, 2),
+                    'Timestamp': datetime.now(),
+                    'Category': 'Car'
+                }
+                save_data(new_data)
+                
+                show_visualizations()
+
     with tab4:
-        st.write("Food calculator implementation would go here")
+        with st.expander("🍗 Food Emissions", expanded=True):
+            diet_type = st.selectbox("Diet type", [
+                "Meat lover",
+                "Average",
+                "Vegetarian", 
+                "Vegan"
+            ])
+            
+            meals = st.number_input("Meals per week", 1, 21, 14)
+            
+            if st.button("Calculate Food Footprint"):
+                # Average kg CO2 per meal by diet type
+                factors = {
+                    "Meat lover": 3.5,
+                    "Average": 2.5,
+                    "Vegetarian": 1.5,
+                    "Vegan": 1.0
+                }
+                
+                total = (meals * factors[diet_type] * 52 / 1000)  # Yearly total in metric tons
+                
+                st.metric("Yearly Footprint", f"{round(total, 2)} metric tons CO₂")
+                show_impact(total, "Food")
+                
+                new_data = {
+                    'Type': 'Food',
+                    'Value': round(total, 2),
+                    'Timestamp': datetime.now(),
+                    'Category': 'Food'
+                }
+                save_data(new_data)
+                
+                show_visualizations()
     
     st.sidebar.header("About")
     st.sidebar.info("""
