@@ -11,14 +11,22 @@ import plotly.express as px
 import base64
 from datetime import datetime
 
-# Initialize session state for data storage
+# Initialize session state
 if 'footprint_data' not in st.session_state:
     st.session_state.footprint_data = pd.DataFrame(columns=[
-        'Type', 'Value', 'Timestamp', 'Category'
+        'Type', 'Value', 'Timestamp', 'Category', 'User'
     ])
+    
+if 'user_profile' not in st.session_state:
+    st.session_state.user_profile = {
+        'name': 'Guest',
+        'email': '',
+        'location': ''
+    }
 
 def save_data(data):
     """Save footprint data to session state"""
+    data['User'] = st.session_state.user_profile['name']
     new_row = pd.DataFrame([data])
     st.session_state.footprint_data = pd.concat(
         [st.session_state.footprint_data, new_row],
@@ -27,21 +35,25 @@ def save_data(data):
 
 # Background image setup from main.py
 def get_base64(bin_file):
-    with open(bin_file, 'rb') as f:
-        data = f.read()
-    return base64.b64encode(data).decode()
+    try:
+        with open(bin_file, 'rb') as f:
+            data = f.read()
+        return base64.b64encode(data).decode()
+    except FileNotFoundError:
+        return None
 
 def set_background(png_file):
     bin_str = get_base64(png_file)
-    page_bg_img = '''
-    <style>
-    .stApp {
-    background-image: url("data:image/png;base64,%s");
-    background-size: cover;
-    }
-    </style>
-    ''' % bin_str
-    st.markdown(page_bg_img, unsafe_allow_html=True)
+    if bin_str:
+        page_bg_img = '''
+        <style>
+        .stApp {
+        background-image: url("data:image/png;base64,%s");
+        background-size: cover;
+        }
+        </style>
+        ''' % bin_str
+        st.markdown(page_bg_img, unsafe_allow_html=True)
 
 # Impact level display from enhanced_carbon_calculator.py
 def show_impact(value, category):
@@ -71,18 +83,21 @@ def show_visualizations():
     try:
         st.subheader("📊 Your Footprint History")
         
-        # Time series line chart with markers
+        # Time series bar chart
         if not st.session_state.footprint_data.empty:
-            fig = px.line(
+            fig = px.bar(
                 st.session_state.footprint_data,
-                x='Timestamp',
+                x='User',
                 y='Value',
                 color='Category',
-                title='Carbon Footprint Over Time',
-                markers=True,
-                line_shape='spline'
+                title='Carbon Footprint By User',
+                barmode='group'
             )
-            fig.update_traces(line=dict(width=3))
+            fig.update_layout(
+                xaxis_title='User',
+                yaxis_title='CO₂ Emissions (metric tons)',
+                hovermode='x unified'
+            )
             st.plotly_chart(fig, use_container_width=True)
         
         # Latest comparison as pie chart
@@ -170,6 +185,24 @@ def transport_calculator():
             show_visualizations()
 
 # Main app structure from carbon_footprint_calculator.py with enhancements
+def collect_user_profile():
+    """Collect user profile information in sidebar"""
+    with st.sidebar:
+        st.header("👤 Your Profile")
+        
+        # Initialize form values from session state
+        name = st.text_input("Your Name", value=st.session_state.user_profile['name'], key="profile_name")
+        email = st.text_input("Email (optional)", value=st.session_state.user_profile['email'], key="profile_email")
+        location = st.text_input("Location (Country/Region)", value=st.session_state.user_profile['location'], key="profile_location")
+        
+        if st.button("Save Profile"):
+            st.session_state.user_profile = {
+                'name': name,
+                'email': email,
+                'location': location
+            }
+            st.success("Profile saved!")
+
 def main():
     st.set_page_config(
         page_title="Carbon Calculator",
@@ -177,10 +210,13 @@ def main():
         initial_sidebar_state="expanded"
     )
     
+    # Collect user profile
+    collect_user_profile()
+    
     set_background('background.png')
     
-    st.title("🌍 Carbon Footprint Calculator")
-    st.write("Calculate and track your environmental impact across different categories")
+    st.title(f"🌍 Carbon Footprint Calculator")
+    st.write(f"Welcome, {st.session_state.user_profile['name']}! Calculate and track your environmental impact")
     
     tab1, tab2, tab3, tab4 = st.tabs([
         "🏠 Household", 
